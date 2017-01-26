@@ -15,11 +15,15 @@ type APIConfig struct {
 	Secret   string `yaml:"client_secret"`
 }
 
+const (
+	configPath = "auth.yaml"
+)
+
 var config APIConfig
 
 func main() {
 	// Read config from file
-	rawConfig, err := ioutil.ReadFile("auth.yaml")
+	rawConfig, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		panic(err)
 	}
