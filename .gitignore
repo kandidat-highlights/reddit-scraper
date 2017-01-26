@@ -1,4 +1,6 @@
 auth.yaml
+votes.csv
+processed.csv
 
 
 # Created by https://www.gitignore.io/api/wind,windows,linux,macos,visualstudiocode
