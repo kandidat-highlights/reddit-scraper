@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/signal"
 
+	"encoding/csv"
+
 	"gopkg.in/yaml.v2"
 )
 
@@ -30,13 +32,13 @@ const (
 
 var (
 	config     APIConfig
-	startLine  int64
+	startPos   int64
 	currentPos int64
 )
 
 func main() {
 	// Parse input flags
-	flag.Int64Var(&startLine, "start", 0, "Line to start processing at")
+	flag.Int64Var(&startPos, "start", 0, "Line to start processing at")
 	flag.Parse()
 
 	// Read config from file
@@ -60,8 +62,15 @@ func main() {
 	}
 	defer file.Close()
 
+	// Initialize output file
+	outputFile, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		panic(err)
+	}
+	defer outputFile.Close()
+
 	// Start processing votes at specified position
-	err = process(file, startLine)
+	err = process(file, outputFile, startPos)
 	if err != nil {
 		panic(err)
 	}
@@ -85,7 +94,7 @@ func onInterupt() {
 	fmt.Printf("Stopped at position: %d\n", currentPos)
 }
 
-func process(input io.ReadSeeker, start int64) error {
+func process(input io.ReadSeeker, outputFile *os.File, start int64) error {
 	if _, err := input.Seek(start, 0); err != nil {
 		return err
 	}
@@ -98,9 +107,11 @@ func process(input io.ReadSeeker, start int64) error {
 		return
 	}
 	scanner.Split(scanLines)
-
+	outputWriter := csv.NewWriter(outputFile)
+	defer outputWriter.Flush()
 	for scanner.Scan() {
 		// TODO: Fetch title from Reddit and save to new file
+		outputWriter.Write([]string{scanner.Text()})
 		fmt.Printf("Scanned: %s\n", scanner.Text())
 	}
 	return scanner.Err()
