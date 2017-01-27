@@ -34,12 +34,16 @@ const (
 	lookupURL     = "https://oauth.reddit.com/by_id/"
 	userAgent     = "RNNScraperBot/0.1 by "
 	authHeaderVal = "bearer "
+
+	headerUsed = "X-Ratelimit-Used"
+	headerRem  = "X-Ratelimit-Remaining"
+	headerNext = "X-Ratelimit-Reset"
 )
 
 var (
-	rateUsed                    = 0
-	rateRemaining               = 60
-	rateReset     time.Duration = 60
+	rateUsed      = 0
+	rateRemaining = 60
+	rateReset     = 60
 
 	accessToken     string
 	tokenExpiration time.Time
@@ -65,8 +69,9 @@ func GetPostInfo(input string, config APIConfig) PostInfo {
 		updateAccessToken(config)
 		title, content = getRedditInfo(fullname, config)
 	} else {
+		fmt.Printf("Rate exceeded, waiting %d seconds.\n", rateReset)
 		// Wait until new period
-		time.Sleep(rateReset * time.Second)
+		time.Sleep(time.Duration(rateReset) * time.Second)
 		// Make request
 		updateAccessToken(config)
 		title, content = getRedditInfo(fullname, config)
@@ -136,6 +141,9 @@ func getRedditInfo(fullname string, config APIConfig) (title, content string) {
 		panic(resp.Status)
 	}
 	defer resp.Body.Close()
+	rateRemaining, _ = strconv.Atoi(resp.Header.Get(headerRem))
+	rateUsed, _ = strconv.Atoi(resp.Header.Get(headerUsed))
+	rateReset, _ = strconv.Atoi(resp.Header.Get(headerNext))
 	body, err := ioutil.ReadAll(resp.Body)
 	fmt.Println(string(body))
 	// TODO: Process body to extract data
