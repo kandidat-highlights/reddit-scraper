@@ -3,6 +3,7 @@ package reddit
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -29,9 +30,10 @@ type APIConfig struct {
 }
 
 const (
-	tokenURL   = "https://www.reddit.com/api/v1/access_token"
-	userAgent  = "RNNScraperBot/0.1 by "
-	authHeader = "Authorization: bearer "
+	tokenURL      = "https://www.reddit.com/api/v1/access_token"
+	lookupURL     = "https://oauth.reddit.com/by_id/"
+	userAgent     = "RNNScraperBot/0.1 by "
+	authHeaderVal = "bearer "
 )
 
 var (
@@ -61,13 +63,13 @@ func GetPostInfo(input string, config APIConfig) PostInfo {
 	if rateRemaining > 0 {
 		// Make request
 		updateAccessToken(config)
-		title, content = getRedditInfo(fullname)
+		title, content = getRedditInfo(fullname, config)
 	} else {
 		// Wait until new period
 		time.Sleep(rateReset * time.Second)
 		// Make request
 		updateAccessToken(config)
-		title, content = getRedditInfo(fullname)
+		title, content = getRedditInfo(fullname, config)
 	}
 	response.Title = title
 	response.Content = content
@@ -114,6 +116,28 @@ func updateAccessToken(config APIConfig) {
 	}
 }
 
-func getRedditInfo(fullname string) (title, content string) {
+func getRedditInfo(fullname string, config APIConfig) (title, content string) {
+	client := http.Client{}
+	req, err := http.NewRequest("GET", lookupURL+fullname, nil)
+	if err != nil {
+		panic(err)
+	}
+	req.Header.Set("User-Agent", userAgent+config.Username)
+	req.Header.Set("Authorization", authHeaderVal+accessToken)
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	if resp.StatusCode == 401 {
+		updateAccessToken(config)
+		return getRedditInfo(fullname, config)
+	}
+	if resp.StatusCode != 200 {
+		panic(resp.Status)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	fmt.Println(string(body))
+	// TODO: Process body to extract data
 	return
 }

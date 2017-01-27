@@ -105,7 +105,6 @@ func process(input io.ReadSeeker, outputFile *os.File, start int64) error {
 	for shouldProcess && scanner.Scan() {
 		info := reddit.GetPostInfo(scanner.Text(), config)
 		outputWriter.Write([]string{info.Username, info.Vote, info.Title, info.Content})
-		return nil
 	}
 	onDone()
 	return scanner.Err()
