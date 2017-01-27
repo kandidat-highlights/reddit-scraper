@@ -6,6 +6,8 @@ import (
 	"io"
 	"io/ioutil"
 
+	"github.com/hsson/reddit-scraper/reddit"
+
 	"flag"
 
 	"os"
@@ -51,7 +53,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(config)
 
 	// Make sure user knows last processed position if Interupted
 	setupInterupCapture()
@@ -110,9 +111,8 @@ func process(input io.ReadSeeker, outputFile *os.File, start int64) error {
 	outputWriter := csv.NewWriter(outputFile)
 	defer outputWriter.Flush()
 	for shouldProcess && scanner.Scan() {
-		// TODO: Fetch title from Reddit and save to new file
-		outputWriter.Write([]string{scanner.Text()})
-		fmt.Printf("Scanned: %s\n", scanner.Text())
+		info := reddit.GetPostInfo(scanner.Text())
+		outputWriter.Write([]string{info.Username, info.Vote, info.Title, info.Content})
 	}
 	onDone()
 	return scanner.Err()
