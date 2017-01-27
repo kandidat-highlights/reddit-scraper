@@ -15,6 +15,8 @@ import (
 
 	"encoding/csv"
 
+	"time"
+
 	"gopkg.in/yaml.v2"
 )
 
@@ -103,8 +105,13 @@ func process(input io.ReadSeeker, outputFile *os.File, start int64) error {
 	outputWriter := csv.NewWriter(outputFile)
 	defer outputWriter.Flush()
 	for shouldProcess && scanner.Scan() {
-		info := reddit.GetPostInfo(scanner.Text(), config)
-		outputWriter.Write([]string{info.Username, info.Vote, info.SubReddit, info.Title, info.Content})
+		fmt.Printf("On position: %d\n", currentPos)
+		info, err := reddit.GetPostInfo(scanner.Text(), config)
+		if err == nil {
+			outputWriter.Write([]string{info.Username, info.Vote, info.SubReddit, info.Title, info.Content})
+			outputWriter.Flush()
+		}
+		time.Sleep(1 * time.Second)
 	}
 	onDone()
 	return scanner.Err()

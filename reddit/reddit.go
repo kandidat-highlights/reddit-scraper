@@ -3,6 +3,7 @@ package reddit
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -51,7 +52,7 @@ var (
 )
 
 // GetPostInfo processes a line in the csv and returns a PostInfo struct
-func GetPostInfo(input string, config APIConfig) PostInfo {
+func GetPostInfo(input string, config APIConfig) (PostInfo, error) {
 	response := new(PostInfo)
 
 	// Process input
@@ -64,22 +65,37 @@ func GetPostInfo(input string, config APIConfig) PostInfo {
 
 	var title, content string
 
-	// Get data from Reddit
-	if rateRemaining > 0 {
-		// Make request
-		updateAccessToken(config)
-		getRedditInfo(fullname, config, response)
-	} else {
-		fmt.Printf("Rate exceeded, waiting %d seconds.\n", rateReset)
-		// Wait until new period
-		time.Sleep(time.Duration(rateReset) * time.Second)
-		// Make request
-		updateAccessToken(config)
-		getRedditInfo(fullname, config, response)
+	// Temporary solution, wait 1 sec between every request.
+	// Must examine request headers more
+	updateAccessToken(config)
+	err := getRedditInfo(fullname, config, response)
+	if err != nil {
+		return *response, err
 	}
+
+	/*
+		// Get data from Reddit
+		if rateUsed < 60 {
+			// Make request
+			updateAccessToken(config)
+			err := getRedditInfo(fullname, config, response)
+			if err != nil {
+				return *response, err
+			}
+		} else {
+			fmt.Printf("Rate exceeded, waiting %d seconds.\n", rateReset)
+			// Wait until new period
+			time.Sleep(time.Duration(rateReset) * time.Second)
+			// Make request
+			updateAccessToken(config)
+			err := getRedditInfo(fullname, config, response)
+			if err != nil {
+				return *response, err
+			}
+		} */
 	response.Title = title
 	response.Content = content
-	return *response
+	return *response, nil
 }
 
 // Updates the access token if it's invalid
@@ -122,7 +138,7 @@ func updateAccessToken(config APIConfig) {
 	}
 }
 
-func getRedditInfo(fullname string, config APIConfig, response *PostInfo) {
+func getRedditInfo(fullname string, config APIConfig, response *PostInfo) error {
 	client := http.Client{}
 	req, err := http.NewRequest("GET", lookupURL+fullname, nil)
 	if err != nil {
@@ -136,8 +152,7 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) {
 	}
 	if resp.StatusCode == 401 {
 		updateAccessToken(config)
-		getRedditInfo(fullname, config, response)
-		return
+		return getRedditInfo(fullname, config, response)
 	}
 	if resp.StatusCode != 200 {
 		panic(resp.Status)
@@ -149,6 +164,9 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) {
 	body, err := ioutil.ReadAll(resp.Body)
 	var listing RedditListing
 	json.Unmarshal(body, &listing)
+	if len(listing.Data.Children) == 0 {
+		return errors.New("Empty link")
+	}
 	title := listing.Data.Children[0].Data.Title
 	subreddit := listing.Data.Children[0].Data.Subreddit
 	content := listing.Data.Children[0].Data.Selftext
@@ -156,4 +174,6 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) {
 	response.Content = content
 	response.SubReddit = subreddit
 	fmt.Printf("Processed post %v\n", fullname)
+	fmt.Printf("Rate used: %d, Rate remaining: %d, Until reset: %d\n", rateUsed, rateRemaining, rateReset)
+	return nil
 }
