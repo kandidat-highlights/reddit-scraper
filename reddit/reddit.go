@@ -14,10 +14,11 @@ import (
 
 // PostInfo represents info about a post that a user has voted on
 type PostInfo struct {
-	Username string
-	Vote     string
-	Title    string
-	Content  string
+	Username  string
+	Vote      string
+	SubReddit string
+	Title     string
+	Content   string
 }
 
 // APIConfig declares a configuration nessessary to make API calls to Reddit
@@ -67,14 +68,14 @@ func GetPostInfo(input string, config APIConfig) PostInfo {
 	if rateRemaining > 0 {
 		// Make request
 		updateAccessToken(config)
-		title, content = getRedditInfo(fullname, config)
+		getRedditInfo(fullname, config, response)
 	} else {
 		fmt.Printf("Rate exceeded, waiting %d seconds.\n", rateReset)
 		// Wait until new period
 		time.Sleep(time.Duration(rateReset) * time.Second)
 		// Make request
 		updateAccessToken(config)
-		title, content = getRedditInfo(fullname, config)
+		getRedditInfo(fullname, config, response)
 	}
 	response.Title = title
 	response.Content = content
@@ -121,7 +122,7 @@ func updateAccessToken(config APIConfig) {
 	}
 }
 
-func getRedditInfo(fullname string, config APIConfig) (title, content string) {
+func getRedditInfo(fullname string, config APIConfig, response *PostInfo) {
 	client := http.Client{}
 	req, err := http.NewRequest("GET", lookupURL+fullname, nil)
 	if err != nil {
@@ -135,17 +136,24 @@ func getRedditInfo(fullname string, config APIConfig) (title, content string) {
 	}
 	if resp.StatusCode == 401 {
 		updateAccessToken(config)
-		return getRedditInfo(fullname, config)
+		getRedditInfo(fullname, config, response)
+		return
 	}
 	if resp.StatusCode != 200 {
 		panic(resp.Status)
 	}
-	defer resp.Body.Close()
 	rateRemaining, _ = strconv.Atoi(resp.Header.Get(headerRem))
 	rateUsed, _ = strconv.Atoi(resp.Header.Get(headerUsed))
 	rateReset, _ = strconv.Atoi(resp.Header.Get(headerNext))
+	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Println(string(body))
-	// TODO: Process body to extract data
-	return
+	var listing RedditListing
+	json.Unmarshal(body, &listing)
+	title := listing.Data.Children[0].Data.Title
+	subreddit := listing.Data.Children[0].Data.Subreddit
+	content := listing.Data.Children[0].Data.Selftext
+	response.Title = title
+	response.Content = content
+	response.SubReddit = subreddit
+	fmt.Printf("Processed post %v\n", fullname)
 }

@@ -104,7 +104,7 @@ func process(input io.ReadSeeker, outputFile *os.File, start int64) error {
 	defer outputWriter.Flush()
 	for shouldProcess && scanner.Scan() {
 		info := reddit.GetPostInfo(scanner.Text(), config)
-		outputWriter.Write([]string{info.Username, info.Vote, info.Title, info.Content})
+		outputWriter.Write([]string{info.Username, info.Vote, info.SubReddit, info.Title, info.Content})
 	}
 	onDone()
 	return scanner.Err()
