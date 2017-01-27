@@ -31,9 +31,10 @@ const (
 )
 
 var (
-	config     APIConfig
-	startPos   int64
-	currentPos int64
+	shouldProcess = true
+	config        APIConfig
+	startPos      int64
+	currentPos    int64
 )
 
 func main() {
@@ -82,14 +83,13 @@ func setupInterupCapture() {
 	signal.Notify(c, os.Interrupt)
 	go func() {
 		<-c
-		onInterupt()
-		os.Exit(0)
+		shouldProcess = false
 	}()
 }
 
 // Function that runs when user interupts program
-func onInterupt() {
-	fmt.Println("Interupted file processing")
+func onDone() {
+	fmt.Println("Completed file processing")
 	fmt.Println("==========================")
 	fmt.Printf("Stopped at position: %d\n", currentPos)
 }
@@ -109,10 +109,11 @@ func process(input io.ReadSeeker, outputFile *os.File, start int64) error {
 	scanner.Split(scanLines)
 	outputWriter := csv.NewWriter(outputFile)
 	defer outputWriter.Flush()
-	for scanner.Scan() {
+	for shouldProcess && scanner.Scan() {
 		// TODO: Fetch title from Reddit and save to new file
 		outputWriter.Write([]string{scanner.Text()})
 		fmt.Printf("Scanned: %s\n", scanner.Text())
 	}
+	onDone()
 	return scanner.Err()
 }
