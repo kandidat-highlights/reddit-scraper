@@ -26,20 +26,20 @@ const (
 	configPath = "auth.yaml"
 	votesPath  = "votes.csv"
 	targetPath = "processed.csv"
-
-	batchSize = 10
 )
 
 var (
 	shouldProcess = true
 	config        reddit.APIConfig
 	startPos      int64
+	batchSize     int
 	currentPos    int64
 )
 
 func main() {
 	// Parse input flags
 	flag.Int64Var(&startPos, "start", 0, "Line to start processing at")
+	flag.IntVar(&batchSize, "batch", 25, "Determines how large batches will be processed")
 	flag.Parse()
 
 	// Read config from file
@@ -120,14 +120,12 @@ func process(input io.ReadSeeker, outputFile *os.File, start int64) error {
 	// Initialize vars
 	scanner := bufio.NewScanner(input)
 	currentPos = start
-	prevPos := start
 	outputWriter := csv.NewWriter(outputFile)
 	defer outputWriter.Flush()
 
 	// Setup scanner to keep track of where it is
 	scanLines := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		advance, token, err = bufio.ScanLines(data, atEOF)
-		prevPos = currentPos
 		currentPos += int64(advance)
 		return
 	}
