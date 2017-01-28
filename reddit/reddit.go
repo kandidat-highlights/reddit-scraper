@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -41,6 +42,8 @@ const (
 	headerUsed = "X-Ratelimit-Used"
 	headerRem  = "X-Ratelimit-Remaining"
 	headerNext = "X-Ratelimit-Reset"
+
+	retryTime = 5 * time.Second
 )
 
 var (
@@ -136,7 +139,11 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) error 
 	req.Header.Set("Authorization", authHeaderVal+accessToken)
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		log.Println("Error:", err)
+		log.Printf("Trying again in %d seconds\n", retryTime)
+		time.Sleep(retryTime)
+		updateAccessToken(config)
+		return getRedditInfo(fullname, config, response)
 	}
 	if resp.StatusCode == 401 {
 		updateAccessToken(config)
@@ -151,6 +158,7 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) error 
 		rateUsed = 0
 	}
 	rateReset = rateResetTmp
+	rateUsed++
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	var listing RedditListing
@@ -158,7 +166,6 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) error 
 	if len(listing.Data.Children) == 0 {
 		return errors.New("Empty link")
 	}
-	rateUsed++
 	title := listing.Data.Children[0].Data.Title
 	subreddit := listing.Data.Children[0].Data.Subreddit
 	content := listing.Data.Children[0].Data.Selftext
