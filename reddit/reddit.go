@@ -153,7 +153,7 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) error 
 	}
 	rateResetTmp, err := strconv.Atoi(resp.Header.Get(headerNext))
 	rateResetTmp = int(math.Mod(float64(rateResetTmp), 60.0))
-	if rateResetTmp > rateReset && err != nil {
+	if rateResetTmp > rateReset && err == nil {
 		rateUsed = 0
 	}
 	rateReset = rateResetTmp
