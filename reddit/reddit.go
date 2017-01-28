@@ -67,28 +67,28 @@ var (
 
 // GetPostInfo processes a line in the csv and returns a PostInfo struct
 func GetPostInfo(input InputBatch, config APIConfig) ([]PostInfo, error) {
-	responses := []PostInfo{}
 
 	// Get data from Reddit
 	if rateUsed < 60 {
 		// Make request
 		updateAccessToken(config)
-		responses, err := getRedditInfo(input, config)
+		result, err := getRedditInfo(input, config)
 		if err != nil {
-			return responses, err
+			return []PostInfo{}, err
 		}
-	} else {
-		fmt.Printf("Rate exceeded, waiting %d seconds.\n", rateReset)
-		// Wait until new period
-		time.Sleep(time.Duration(rateReset) * time.Second)
-		// Make request
-		updateAccessToken(config)
-		responses, err := getRedditInfo(input, config)
-		if err != nil {
-			return responses, err
-		}
+		return result, nil
 	}
-	return responses, nil
+
+	fmt.Printf("Rate exceeded, waiting %d seconds.\n", rateReset)
+	// Wait until new period
+	time.Sleep(time.Duration(rateReset) * time.Second)
+	// Make request
+	updateAccessToken(config)
+	result, err := getRedditInfo(input, config)
+	if err != nil {
+		return []PostInfo{}, err
+	}
+	return result, nil
 }
 
 // Updates the access token if it's invalid
