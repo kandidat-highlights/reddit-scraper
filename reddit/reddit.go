@@ -92,7 +92,6 @@ func GetPostInfo(input string, config APIConfig) (PostInfo, error) {
 // Updates the access token if it's invalid
 func updateAccessToken(config APIConfig) {
 	if accessToken == "" || time.Now().After(tokenExpiration) {
-		// TODO Update token and expiration time
 		client := &http.Client{}
 		data := url.Values{}
 		data.Set("grant_type", "password")
@@ -152,9 +151,9 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) error 
 	if resp.StatusCode != 200 {
 		panic(resp.Status)
 	}
-	rateResetTmp, _ := strconv.Atoi(resp.Header.Get(headerNext))
+	rateResetTmp, err := strconv.Atoi(resp.Header.Get(headerNext))
 	rateResetTmp = int(math.Mod(float64(rateResetTmp), 60.0))
-	if rateResetTmp > rateReset {
+	if rateResetTmp > rateReset && err != nil {
 		rateUsed = 0
 	}
 	rateReset = rateResetTmp
@@ -172,7 +171,6 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) error 
 	response.Title = title
 	response.Content = content
 	response.SubReddit = subreddit
-	fmt.Printf("Processed post %v\n", fullname)
-	fmt.Printf("Rate used: %d, Rate remaining: %d, Until reset: %d\n", rateUsed, rateRemaining, rateReset)
+	log.Printf("Processed: %v,\tRate used: %d, Seconds to reset: %d", fullname, rateUsed, rateReset)
 	return nil
 }

@@ -2,9 +2,9 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 
 	"github.com/hsson/reddit-scraper/reddit"
 
@@ -84,9 +84,9 @@ func setupInterupCapture() {
 
 // Function that runs when user interupts program
 func onDone() {
-	fmt.Println("Completed file processing")
-	fmt.Println("==========================")
-	fmt.Printf("Stopped at position: %d\n", currentPos)
+	log.Println("Completed file processing")
+	log.Println("==========================")
+	log.Printf("Stopped at position: %d\n", currentPos)
 }
 
 func process(input io.ReadSeeker, outputFile *os.File, start int64) error {
@@ -105,7 +105,7 @@ func process(input io.ReadSeeker, outputFile *os.File, start int64) error {
 	outputWriter := csv.NewWriter(outputFile)
 	defer outputWriter.Flush()
 	for shouldProcess && scanner.Scan() {
-		fmt.Printf("On position: %d\n", currentPos)
+		log.Printf("On position: %d\n", currentPos)
 		info, err := reddit.GetPostInfo(scanner.Text(), config)
 		if err == nil {
 			outputWriter.Write([]string{info.Username, info.Vote, info.SubReddit, info.Title, info.Content})
