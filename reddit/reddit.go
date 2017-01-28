@@ -33,6 +33,16 @@ type APIConfig struct {
 	Secret   string `yaml:"client_secret"`
 }
 
+// Input represents the input from the un-processed data
+type Input struct {
+	Username string
+	Vote     string
+	FullName string
+}
+
+// InputBatch is a collection of inputs
+type InputBatch []Input
+
 const (
 	tokenURL      = "https://www.reddit.com/api/v1/access_token"
 	lookupURL     = "https://oauth.reddit.com/by_id/"
@@ -56,24 +66,16 @@ var (
 )
 
 // GetPostInfo processes a line in the csv and returns a PostInfo struct
-func GetPostInfo(input string, config APIConfig) (PostInfo, error) {
-	response := new(PostInfo)
-
-	// Process input
-	data := strings.Split(input, ",")
-	username := data[0]
-	vote := data[2]
-	fullname := data[1]
-	response.Username = username
-	response.Vote = vote
+func GetPostInfo(input InputBatch, config APIConfig) ([]PostInfo, error) {
+	responses := []PostInfo{}
 
 	// Get data from Reddit
 	if rateUsed < 60 {
 		// Make request
 		updateAccessToken(config)
-		err := getRedditInfo(fullname, config, response)
+		responses, err := getRedditInfo(input, config)
 		if err != nil {
-			return *response, err
+			return responses, err
 		}
 	} else {
 		fmt.Printf("Rate exceeded, waiting %d seconds.\n", rateReset)
@@ -81,12 +83,12 @@ func GetPostInfo(input string, config APIConfig) (PostInfo, error) {
 		time.Sleep(time.Duration(rateReset) * time.Second)
 		// Make request
 		updateAccessToken(config)
-		err := getRedditInfo(fullname, config, response)
+		responses, err := getRedditInfo(input, config)
 		if err != nil {
-			return *response, err
+			return responses, err
 		}
 	}
-	return *response, nil
+	return responses, nil
 }
 
 // Updates the access token if it's invalid
@@ -128,29 +130,40 @@ func updateAccessToken(config APIConfig) {
 	}
 }
 
-func getRedditInfo(fullname string, config APIConfig, response *PostInfo) error {
+func formatAPIArguments(inputs InputBatch) string {
+	fullnames := make([]string, len(inputs))
+	for _, in := range inputs {
+		fullnames = append(fullnames, in.FullName)
+	}
+	return strings.Join(fullnames, ",")
+}
+
+func getRedditInfo(inputs InputBatch, config APIConfig) ([]PostInfo, error) {
+	responses := []PostInfo{}
+
+	// Setup request to API
 	client := http.Client{}
-	req, err := http.NewRequest("GET", lookupURL+fullname, nil)
+	url := lookupURL + formatAPIArguments(inputs)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		panic(err)
 	}
+
+	// Set requred headers for Reddit API
 	req.Header.Set("User-Agent", userAgent+config.Username)
 	req.Header.Set("Authorization", authHeaderVal+accessToken)
+
+	// Make the request
 	resp, err := client.Do(req)
-	if err != nil {
-		log.Println("Error:", err)
+	if err != nil || resp.StatusCode != 200 {
+		log.Printf("An error occured (%d): %v\n", resp.StatusCode, err)
 		log.Printf("Trying again in %d seconds\n", retryTime)
 		time.Sleep(retryTime)
 		updateAccessToken(config)
-		return getRedditInfo(fullname, config, response)
+		return getRedditInfo(inputs, config)
 	}
-	if resp.StatusCode == 401 {
-		updateAccessToken(config)
-		return getRedditInfo(fullname, config, response)
-	}
-	if resp.StatusCode != 200 {
-		panic(resp.Status)
-	}
+
+	// Keep track of rate limits
 	rateResetTmp, err := strconv.Atoi(resp.Header.Get(headerNext))
 	rateResetTmp = int(math.Mod(float64(rateResetTmp), 60.0))
 	if rateResetTmp > rateReset && err == nil {
@@ -158,19 +171,27 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) error 
 	}
 	rateReset = rateResetTmp
 	rateUsed++
+
+	// Start processing response
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	var listing RedditListing
 	json.Unmarshal(body, &listing)
 	if len(listing.Data.Children) == 0 {
-		return errors.New("Empty link")
+		return responses, errors.New("All empty")
 	}
-	title := listing.Data.Children[0].Data.Title
-	subreddit := listing.Data.Children[0].Data.Subreddit
-	content := listing.Data.Children[0].Data.Selftext
-	response.Title = title
-	response.Content = content
-	response.SubReddit = subreddit
-	log.Printf("Processed: %v, Rate used: %d, Seconds to reset: %d", fullname, rateUsed, rateReset)
-	return nil
+
+	// Create a list of every processed post
+	for i, child := range listing.Data.Children {
+		postInfo := new(PostInfo)
+		postInfo.Username = inputs[i].Username
+		postInfo.Vote = inputs[i].Vote
+		postInfo.Title = child.Data.Title
+		postInfo.SubReddit = child.Data.Subreddit
+		postInfo.Content = child.Data.Selftext
+		responses = append(responses, *postInfo)
+	}
+
+	log.Printf("Processed %d posts, Rate used: %d, Seconds to reset: %d", len(inputs), rateUsed, rateReset)
+	return responses, nil
 }
