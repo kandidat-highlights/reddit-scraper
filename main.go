@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 
-	"github.com/hsson/reddit-scraper/reddit"
+	"github.com/kandidat-highlights/reddit-scraper/reddit"
 
 	"flag"
 
@@ -17,6 +17,8 @@ import (
 
 	"time"
 
+	"strings"
+
 	"gopkg.in/yaml.v2"
 )
 
@@ -24,6 +26,8 @@ const (
 	configPath = "auth.yaml"
 	votesPath  = "votes.csv"
 	targetPath = "processed.csv"
+
+	batchSize = 10
 )
 
 var (
@@ -89,28 +93,64 @@ func onDone() {
 	log.Printf("Stopped at position: %d\n", currentPos)
 }
 
+func processRaw(rawLine string) (username, vote, fullname string) {
+	line := strings.Split(rawLine, ",")
+	username = line[0]
+	fullname = line[1]
+	vote = line[2]
+	return
+}
+
+func processBatch(batch reddit.InputBatch, outputWriter *csv.Writer) {
+	responses, err := reddit.GetPostInfo(batch, config)
+	if err == nil {
+		for _, post := range responses {
+			outputWriter.Write([]string{post.Username, post.Vote, post.SubReddit, post.Title, post.Content})
+		}
+		outputWriter.Flush()
+	}
+}
+
 func process(input io.ReadSeeker, outputFile *os.File, start int64) error {
+	// Start looking at position 'start' in the file
 	if _, err := input.Seek(start, 0); err != nil {
 		return err
 	}
-	scanner := bufio.NewScanner(input)
 
+	// Initialize vars
+	scanner := bufio.NewScanner(input)
 	currentPos = start
+	prevPos := start
+	outputWriter := csv.NewWriter(outputFile)
+	defer outputWriter.Flush()
+
+	// Setup scanner to keep track of where it is
 	scanLines := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		advance, token, err = bufio.ScanLines(data, atEOF)
+		prevPos = currentPos
 		currentPos += int64(advance)
 		return
 	}
 	scanner.Split(scanLines)
-	outputWriter := csv.NewWriter(outputFile)
-	defer outputWriter.Flush()
+
+	// Start processing file
+	batch := new(reddit.InputBatch)
 	for shouldProcess && scanner.Scan() {
 		log.Printf("On position: %d\n", currentPos)
-		info, err := reddit.GetPostInfo(scanner.Text(), config)
-		if err == nil {
-			outputWriter.Write([]string{info.Username, info.Vote, info.SubReddit, info.Title, info.Content})
-			outputWriter.Flush()
+		u, v, id := processRaw(scanner.Text())
+		inData := reddit.Input{Username: u, Vote: v, FullName: id}
+		*batch = append(*batch, inData)
+
+		if len(*batch) >= batchSize {
+			processBatch(*batch, outputWriter)
+			batch = new(reddit.InputBatch)
+			// Wait so API is not overloaded
+			time.Sleep(1 * time.Second)
 		}
+	}
+	// Process any remaining posts in batch
+	if len(*batch) > 0 {
+		processBatch(*batch, outputWriter)
 		time.Sleep(1 * time.Second)
 	}
 	onDone()
