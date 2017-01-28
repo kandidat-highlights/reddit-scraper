@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -63,38 +64,25 @@ func GetPostInfo(input string, config APIConfig) (PostInfo, error) {
 	response.Username = username
 	response.Vote = vote
 
-	var title, content string
-
-	// Temporary solution, wait 1 sec between every request.
-	// Must examine request headers more
-	updateAccessToken(config)
-	err := getRedditInfo(fullname, config, response)
-	if err != nil {
-		return *response, err
+	// Get data from Reddit
+	if rateUsed < 60 {
+		// Make request
+		updateAccessToken(config)
+		err := getRedditInfo(fullname, config, response)
+		if err != nil {
+			return *response, err
+		}
+	} else {
+		fmt.Printf("Rate exceeded, waiting %d seconds.\n", rateReset)
+		// Wait until new period
+		time.Sleep(time.Duration(rateReset) * time.Second)
+		// Make request
+		updateAccessToken(config)
+		err := getRedditInfo(fullname, config, response)
+		if err != nil {
+			return *response, err
+		}
 	}
-
-	/*
-		// Get data from Reddit
-		if rateUsed < 60 {
-			// Make request
-			updateAccessToken(config)
-			err := getRedditInfo(fullname, config, response)
-			if err != nil {
-				return *response, err
-			}
-		} else {
-			fmt.Printf("Rate exceeded, waiting %d seconds.\n", rateReset)
-			// Wait until new period
-			time.Sleep(time.Duration(rateReset) * time.Second)
-			// Make request
-			updateAccessToken(config)
-			err := getRedditInfo(fullname, config, response)
-			if err != nil {
-				return *response, err
-			}
-		} */
-	response.Title = title
-	response.Content = content
 	return *response, nil
 }
 
@@ -157,9 +145,12 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) error 
 	if resp.StatusCode != 200 {
 		panic(resp.Status)
 	}
-	rateRemaining, _ = strconv.Atoi(resp.Header.Get(headerRem))
-	rateUsed, _ = strconv.Atoi(resp.Header.Get(headerUsed))
-	rateReset, _ = strconv.Atoi(resp.Header.Get(headerNext))
+	rateResetTmp, _ := strconv.Atoi(resp.Header.Get(headerNext))
+	rateResetTmp = int(math.Mod(float64(rateResetTmp), 60.0))
+	if rateResetTmp > rateReset {
+		rateUsed = 0
+	}
+	rateReset = rateResetTmp
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	var listing RedditListing
@@ -167,6 +158,7 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) error 
 	if len(listing.Data.Children) == 0 {
 		return errors.New("Empty link")
 	}
+	rateUsed++
 	title := listing.Data.Children[0].Data.Title
 	subreddit := listing.Data.Children[0].Data.Subreddit
 	content := listing.Data.Children[0].Data.Selftext
