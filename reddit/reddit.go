@@ -171,6 +171,6 @@ func getRedditInfo(fullname string, config APIConfig, response *PostInfo) error 
 	response.Title = title
 	response.Content = content
 	response.SubReddit = subreddit
-	log.Printf("Processed: %v,\tRate used: %d, Seconds to reset: %d", fullname, rateUsed, rateReset)
+	log.Printf("Processed: %v, Rate used: %d, Seconds to reset: %d", fullname, rateUsed, rateReset)
 	return nil
 }
