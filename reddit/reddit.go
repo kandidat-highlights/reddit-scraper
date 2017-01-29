@@ -53,13 +53,16 @@ const (
 	headerRem  = "X-Ratelimit-Remaining"
 	headerNext = "X-Ratelimit-Reset"
 
-	retryTime = 5 * time.Second
+	retryTime  = 5 * time.Second
+	retryCount = 5
 )
 
 var (
 	rateUsed      = 0
 	rateRemaining = 60
 	rateReset     = 60
+
+	retryAttempts = retryCount
 
 	accessToken     string
 	tokenExpiration time.Time
@@ -156,11 +159,17 @@ func getRedditInfo(inputs InputBatch, config APIConfig) ([]PostInfo, error) {
 	// Make the request
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
-		log.Printf("An error occured (%d): %v\n", resp.StatusCode, err)
-		log.Printf("Trying again in %d seconds\n", retryTime)
-		time.Sleep(retryTime)
-		updateAccessToken(config)
-		return getRedditInfo(inputs, config)
+		if retryAttempts > 0 {
+			retryAttempts--
+			log.Printf("An error occured (%d): %v\n", resp.StatusCode, err)
+			log.Printf("Trying again in %d seconds\n", retryTime)
+			time.Sleep(retryTime)
+			updateAccessToken(config)
+			return getRedditInfo(inputs, config)
+		}
+		retryAttempts = retryCount
+		log.Println("Can't resolve error, skipping")
+		return []PostInfo{}, errors.New("Can't fix error, skipping")
 	}
 
 	// Keep track of rate limits
